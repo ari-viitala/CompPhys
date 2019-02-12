@@ -71,9 +71,6 @@ def md_force(dr):
     N = dr.shape[0]
     f = np.zeros((N,3))
     dists = np.nansum(dr**2, axis = 2).reshape((N,N,1))
-
-    #if we dont take the square root at the dists then we can raise the denominators
-    #only to powers 7 and 4 when calculating the force
     f =  48 * np.nansum(dr * (1 / dists**7 - 1 / (2 * dists**4)), axis = 1)
     potential_energy = 2 * np.nansum(1 / dists**6 - 1 / dists**3)
     return f, potential_energy
@@ -106,12 +103,11 @@ def run_md_3d(r,L,T=0.0, dt=5e-3, thermalization_time=2.0, production_time=10.0)
     f, potential_energy = md_force(dr)
     for i in range(num_thermalization_steps):
         r,v,f,dr,potential_energy = do_velocity_verlet_integration(r, v, f, dt, L)
-
-        #Cooling the system during the theramalization to maybe help it stay together
+        
         if i % 50 == 0:
             avg_speed = np.sqrt(v**2).mean()
             v *= T / avg_speed
-
+            
         if i % 100 == 0:
             print("Thermalization: {}/{}".format(i*dt, thermalization_time))
 
@@ -131,12 +127,8 @@ def run_md_3d(r,L,T=0.0, dt=5e-3, thermalization_time=2.0, production_time=10.0)
         si = i
         Ekin[si] = 0.5*np.sum(v**2)/N
         Epot[si] = potential_energy/N
-
-        #calculating the distances in the system
         dists = np.sqrt(np.sum(dr**2, axis = 2))
-
-        #saving the upper triangle of the distance matrix
-        rdf[:,:,si] = np.triu(dists, 1)
+        rdf[:,:,si] = dists
 
 
         # if i % 10 == 0:
@@ -155,36 +147,22 @@ def run_md_3d(r,L,T=0.0, dt=5e-3, thermalization_time=2.0, production_time=10.0)
     return result
 
 def rdf(results, bins_count):
-    """Function for calculating the radial distribution function"""
-
-    #take the mean of the distances over time
     mean = np.mean(results, axis = 2)
-
-    #make a histogram of the data and removing zeros
     hist = np.histogram(mean[np.nonzero(mean)], bins = bins_count)
 
-    #the heights of the histogram bars
     heights = hist[0]
-
     bins = hist[1]
 
     binw = bins[1] - bins[0]
-
-    #the locations of the height values
     rs = bins[:-1] + binw / 2
 
-    #the nomalization term for g(r)
     norm = (N - 1) / (rho * (4 * np.pi) * np.trapz(heights, rs))
 
-    #using the normalization term and the spherical coordinate transform to obtain the correct g(r)
     gr = norm * heights / rs**2
 
-    #calculating the integral to verify that this g(r) fulfills the normalization requirement
     integral = np.trapz(gr * rs**2, rs) * rho * 4 * np.pi
 
     print("Trapz value: " + str(integral))
-
-    #reuturn the function and the x-axis values
     return gr, rs
 
 #By default initialize one particle in 4x4x4 box doing nothing
@@ -193,18 +171,16 @@ if __name__ == "__main__":
     N = 108
     #Position array is always array of size N x 3
     #where N is the number of particles and 3 is the dimension
+    L = np.array([1.0,1.0,1.0]) * np.power(N / rho, 1/3)
 
-    #making the box
-    L = np.array([1.0,1.0,1.0]) * np.power(N / rho, 1/3.)
 
-    #making the r-vector
     r = np.zeros((125,3))
+
 
     x = 5
     y = 5
     z = 5
 
-    #populating the grid using for-loops
     for i in range(0, x):
         for j in range(0, y):
             for k in range(0, z):
@@ -212,40 +188,31 @@ if __name__ == "__main__":
                 r[idx,:] = np.array([i, j, k], dtype = float)
                 #print(r.shape)
 
-    #remocing random elements to achieve the desired density
     while(len(r) > N):
         r = np.delete(r, np.random.randint(0, len(r)), axis = 0)
         #print(r.shape)
 
-    #scaling the distances
     r *= L[0] / 5
     #r += (np.random.rand(N, 1) - 0.5) * 0.01
     #r = np.random.rand(N, 3) * L[0]
-    #L = np.array([4.0,4.0,4.0])
     #r = np.array([[0,0,0], [0,0,1.2]], dtype = float)
     #r[0] = L/2.0
     #r[0] = L/1.4
 
-    #Simulation for the b)-part
-    result = run_md_3d(r,L, T = 0.728, thermalization_time=2, production_time=5.0)
-
-    #Simulation for the C-part
-    #result = run_md_3d(r,L, T = 2, thermalization_time=2, production_time=5.0)
-
+    result = run_md_3d(r,L, T = 0.728, thermalization_time=1, production_time=3.0)
+    #result = run_md_3d(r,L, T = 0.1, thermalization_time=0, production_time=5.0)
+    
     plt.figure()
     plt.plot(result["Ekin"], label="Kinetic energy")
     plt.plot(result["Epot"], label="Potential energy")
     plt.plot(result["Ekin"] + result["Epot"], label="Total energy")
-    #plt.plot(result["Ekin"] * 2. / 3)
+    plt.plot(result["Ekin"] * 2. / 3)
     plt.legend()
 
-    #calculating the rdf and plotting it
     gr, rs = rdf(result["rdf"], 70)
 
     plt.figure()
     plt.plot(rs, gr)
-    plt.xlabel("r")
-    plt.ylabel("$g(r)$")
     print("Final temp: {}".format(result["Ekin"][-1] * 2 / 3.0))
     visualize_particles_3d(r,L)
     visualize_particles_3d(result["Final"], L)
