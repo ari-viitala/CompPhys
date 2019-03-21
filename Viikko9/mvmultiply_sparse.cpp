@@ -277,6 +277,22 @@ void matvec_coo(const COOMatrix & matrix, double* vector, double* result)
 //The length of the vectors must be the same as the number of rows in matrix.
 void matvec_crs(const CRSMatrix & matrix,double* vector,double* result)
 {   
+    //omp_set_num_threads (2) ;
+    for(unsigned int i=0;i<matrix.NRows;++i)
+    {
+        result[i]=0;
+ 
+        for (int k = matrix.RowPtr[i]; k < matrix.RowPtr[i+1]; k = k + 1)
+        {  
+            result[i] = result[i] + matrix.value[k]*vector[matrix.column[k]];
+      }  
+   }  
+    
+    
+}
+
+void matvec_crs_par(const CRSMatrix & matrix,double* vector,double* result)
+{   
     omp_set_num_threads (3) ;
     #pragma omp  parallel for
     for(unsigned int i=0;i<matrix.NRows;++i)
@@ -292,10 +308,13 @@ void matvec_crs(const CRSMatrix & matrix,double* vector,double* result)
     
 }
 
+
+
+
 int main()
 {
     //Grid size in one dimension and corresponding spacing
-    const unsigned int Nx=5000;
+    const unsigned int Nx=6000;
     const double h=1.0/(Nx-1);
     //Number of grid points = number of rows and columns in the matrix
     const unsigned int N=Nx*Nx;
@@ -320,21 +339,31 @@ int main()
     //Allocate space for the results.
     double * result_coo=new double[N];
     double * result_crs=new double[N];
-
+    
+    
+    
+    int n_repeats = 5;
     //Do the multiplications and time.
     double time0=omp_get_wtime();
-
-    matvec_coo(MCOO,vector,result_coo);
+    
+    //for(int i = 0; i < n_repeats;i++){ 
+        matvec_crs(MCRS,vector,result_crs);
+    //}
 
     double time1=omp_get_wtime();
     
-    matvec_crs(MCRS,vector,result_crs);
+    //for(int i = 0; i < n_repeats; i++){ 
+        matvec_crs_par(MCRS,vector,result_crs);
+    //}
 
     double time2=omp_get_wtime();
 
+    matvec_coo(MCOO, vector, result_coo);
+    //matvec_crs_par(MCRS,vector,result_crs);
+    
     //Print results.
-    std::cout<<"Time for COO: "<<time1-time0<<std::endl;
-    std::cout<<"Time for CRS: "<<time2-time1<<std::endl;
+    std::cout<<"Time for Regular: "<<time1-time0<<std::endl;
+    std::cout<<"Time for Parallel: "<<time2-time1<<std::endl;
 
 
     //Check that the rsults are the same.
